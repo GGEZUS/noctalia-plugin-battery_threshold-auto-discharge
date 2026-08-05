@@ -33,6 +33,7 @@ While the plugin controls the threshold, it doesn't actively discharge an alread
 - **Plugin integration**: Reads directly from `charge_control_end_threshold` — works seamlessly with Noctalia plugin
 - **Set and forget**: Runs in background via systemd, automatically adapts to your plugin settings
 - **Safe operation**: Returns to auto mode when on battery power or threshold is reached
+- **Gentle on the battery**: Hysteresis band around the threshold prevents mode oscillation, and the script only writes to `charge_behaviour` on actual state transitions — not every cycle
 
 ## Why?
 
@@ -111,11 +112,15 @@ The helper's rule and the plugin's rule now coexist under different filenames, s
 │  Current battery: 100%                                      │
 │  AC: Connected                                              │
 ├─────────────────────────────────────────────────────────────┤
-│  → Force discharge until battery reaches 65%                │
-│  → Switch to auto mode at 65%                               │
-│  → Maintain 65% while on AC                                 │
+│  → Force discharge until battery reaches 64% (threshold -1) │
+│  → Switch to auto mode at 64%                               │
+│  → Kernel charges back to 65% and holds there               │
+│  → Script stays idle inside the hysteresis band (65–68%)    │
+│  → Only re-engages force-discharge if capacity rises > 68%  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The hysteresis band (`threshold - 1` to `threshold + 3`) is what keeps the script gentle: without it, every 1% drift above the threshold would trigger another force-discharge cycle and another mode write to the EC. With the band, the script writes `force-discharge` once on the way down and `auto` once on the way back, then goes idle until something actually changes.
 
 ### Monitor Progress
 
@@ -213,14 +218,15 @@ See the [plugin's page](https://noctalia.dev/plugins/community/battery-threshold
 
 ## Configuration
 
-Default settings work for most users. The script checks every 10 seconds:
+Default settings work for most users. The script checks every 30 seconds (battery state changes slowly; polling faster just generates needless EC traffic).
 
 - **Battery path:** `/sys/class/power_supply/BAT1`
 - **AC adapter path:** `/sys/class/power_supply/AC`
-- **Check interval:** 10 seconds
+- **Check interval:** 30 seconds
+- **Hysteresis:** `threshold - 1` to `threshold + 3` (see [How It Works](#how-it-works))
 - **Log location:** `~/.local/share/battery-auto-discharge/log`
 
-To customize, edit `/usr/local/bin/battery-auto-discharge` and restart the service.
+To customize any of these (including the hysteresis band or poll interval), edit the variables at the top of `/usr/local/bin/battery-auto-discharge` and restart the service.
 
 ## Credits
 

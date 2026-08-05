@@ -1,13 +1,29 @@
 #!/usr/bin/env bash
-# Auto-discharge battery when above threshold while on AC power
+# Auto-discharge battery when above threshold while on AC power.
+#
+# Gentle-operation notes:
+# - Hysteresis: discharges to (threshold - 1), and does not re-engage
+#   force-discharge until capacity rises to (threshold + 3). Prevents
+#   oscillation at the threshold edge and avoids needless EC writes.
+# - Polling every 30s (battery state changes slowly).
+# - Mode is written only on actual transitions, not every cycle.
 
 BAT_PATH="/sys/class/power_supply/BAT1"
 AC_PATH="/sys/class/power_supply/AC"
 THRESHOLD_FILE="$BAT_PATH/charge_control_end_threshold"
 CAPACITY_FILE="$BAT_PATH/capacity"
-STATUS_FILE="$BAT_PATH/status"
 BEHAVIOUR_FILE="$BAT_PATH/charge_behaviour"
 LOG_FILE="$HOME/.local/share/battery-auto-discharge/log"
+
+# Hysteresis band around the threshold. Without this, the script would flip
+# between force-discharge and auto every time capacity drifts a single
+# percentage point above/below the threshold, generating lots of EC traffic
+# for no real benefit. The band lets the kernel sit at the threshold
+# peacefully while the script stays idle.
+HYSTERESIS_HIGH=3   # only force-discharge once capacity exceeds threshold + this
+HYSTERESIS_LOW=1    # stop force-discharging once capacity falls to threshold - this
+
+POLL_INTERVAL=30    # seconds between checks
 
 # Create log directory if needed
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
@@ -16,11 +32,25 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
+# Write the requested mode only if it isn't already the bracketed-active one.
+# The charge_behaviour file exposes a *list* of supported modes with the
+# active mode wrapped in brackets, e.g. "[auto] inhibit-charge force-discharge".
+# So we check for the bracketed form, not the bare string.
+# Args: target_mode, log_message
+ensure_mode() {
+    local target="$1"
+    local msg="$2"
+    local current
+    current=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "")
+    if [[ "$current" != *"[${target}]"* ]]; then
+        echo "$target" > "$BEHAVIOUR_FILE" 2>/dev/null && log "$msg"
+    fi
+}
+
 while true; do
     # Read current values
     THRESHOLD=$(cat "$THRESHOLD_FILE" 2>/dev/null || echo 100)
     CAPACITY=$(cat "$CAPACITY_FILE" 2>/dev/null || echo 0)
-    STATUS=$(cat "$STATUS_FILE" 2>/dev/null || echo "Unknown")
 
     # Check if on AC power by reading AC adapter
     ON_AC=false
@@ -33,29 +63,19 @@ while true; do
 
     # Only act if on AC power and threshold is less than 100
     if [[ "$ON_AC" == true ]] && [[ "$THRESHOLD" -lt 100 ]]; then
-        if [[ "$CAPACITY" -gt "$THRESHOLD" ]]; then
-            # Battery above threshold - force discharge
-            CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-            if [[ "$CURRENT_BEHAVIOUR" != *'[force-discharge]'* ]]; then
-                echo "force-discharge" > "$BEHAVIOUR_FILE" 2>/dev/null && \
-                    log "Force discharge: $CAPACITY% > $THRESHOLD% (AC online)"
-            fi
-        else
-            # Battery at or below threshold - return to auto
-            CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-            if [[ "$CURRENT_BEHAVIOUR" != *'[auto]'* ]]; then
-                echo "auto" > "$BEHAVIOUR_FILE" 2>/dev/null && \
-                    log "Auto mode: $CAPACITY% <= $THRESHOLD% (AC online)"
-            fi
+        if [[ "$CAPACITY" -gt $((THRESHOLD + HYSTERESIS_HIGH)) ]]; then
+            # Meaningfully above threshold - force discharge
+            ensure_mode "force-discharge" "Force discharge: $CAPACITY% > $THRESHOLD% (AC online)"
+        elif [[ "$CAPACITY" -le $((THRESHOLD - HYSTERESIS_LOW)) ]]; then
+            # At or below threshold - return to auto
+            ensure_mode "auto" "Auto mode: $CAPACITY% <= $THRESHOLD% (AC online)"
         fi
+        # else: inside the hysteresis band — hold current mode, write nothing.
+        # This is what keeps the script idle in steady state.
     else
         # On battery or threshold at 100 - ensure auto mode
-        CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-        if [[ "$CURRENT_BEHAVIOUR" != *'[auto]'* ]]; then
-            echo "auto" > "$BEHAVIOUR_FILE" 2>/dev/null && \
-                log "Auto mode: AC offline or threshold at 100%"
-        fi
+        ensure_mode "auto" "Auto mode: AC offline or threshold at 100%"
     fi
 
-    sleep 10
+    sleep "$POLL_INTERVAL"
 done
