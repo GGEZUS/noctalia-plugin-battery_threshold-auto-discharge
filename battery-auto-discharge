@@ -36,14 +36,14 @@ while true; do
         if [[ "$CAPACITY" -gt "$THRESHOLD" ]]; then
             # Battery above threshold - force discharge
             CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-            if [[ "$CURRENT_BEHAVIOUR" != "force-discharge" ]]; then
+            if [[ "$CURRENT_BEHAVIOUR" != *'[force-discharge]'* ]]; then
                 echo "force-discharge" > "$BEHAVIOUR_FILE" 2>/dev/null && \
                     log "Force discharge: $CAPACITY% > $THRESHOLD% (AC online)"
             fi
         else
             # Battery at or below threshold - return to auto
             CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-            if [[ "$CURRENT_BEHAVIOUR" != "auto" ]]; then
+            if [[ "$CURRENT_BEHAVIOUR" != *'[auto]'* ]]; then
                 echo "auto" > "$BEHAVIOUR_FILE" 2>/dev/null && \
                     log "Auto mode: $CAPACITY% <= $THRESHOLD% (AC online)"
             fi
@@ -51,7 +51,7 @@ while true; do
     else
         # On battery or threshold at 100 - ensure auto mode
         CURRENT_BEHAVIOUR=$(cat "$BEHAVIOUR_FILE" 2>/dev/null || echo "auto")
-        if [[ "$CURRENT_BEHAVIOUR" != "auto" ]]; then
+        if [[ "$CURRENT_BEHAVIOUR" != *'[auto]'* ]]; then
             echo "auto" > "$BEHAVIOUR_FILE" 2>/dev/null && \
                 log "Auto mode: AC offline or threshold at 100%"
         fi
