@@ -1,6 +1,6 @@
 [Unit]
 Description=Battery Auto-Discharge Service
-Documentation=https://github.com/YaLTeR/niri
+Documentation=https://github.com/GGEZUS/noctalia-plugin-battery_threshold-auto-discharge
 After=multi-user.target
 StartLimitBurst=3
 StartLimitIntervalSec=10

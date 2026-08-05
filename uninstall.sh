@@ -14,8 +14,12 @@ fi
 echo "This will remove:"
 echo "  - Systemd service: battery-auto-discharge"
 echo "  - Monitoring script: /usr/local/bin/battery-auto-discharge"
-echo "  - Udev rules: /etc/udev/rules.d/99-battery-threshold.rules"
+echo "  - Helper udev rule:  /etc/udev/rules.d/99-battery-auto-discharge.rules"
+echo "  - Legacy helper rule (if present): /etc/udev/rules.d/99-battery-threshold.rules"
 echo "  - Log directory: ~/.local/share/battery-auto-discharge"
+echo
+echo "Note: the plugin's own udev rule (if it owns 99-battery-threshold.rules)"
+echo "      will NOT be touched."
 echo
 
 read -p "Continue? (y/N) " -n 1 -r
@@ -42,8 +46,19 @@ sudo rm -f /usr/local/bin/battery-auto-discharge
 echo "✅ Script removed"
 
 # Remove udev rules
-echo "🗑️  Removing udev rules..."
-sudo rm -f /etc/udev/rules.d/99-battery-threshold.rules
+echo "🗑️  Removing helper udev rule..."
+sudo rm -f /etc/udev/rules.d/99-battery-auto-discharge.rules
+
+# Also remove the legacy-named helper rule ONLY if it still contains our
+# charge_behaviour signature. We must NOT delete it if the Noctalia
+# battery-threshold plugin now owns that slot (its rule does not mention
+# charge_behaviour).
+LEGACY_UDEV="/etc/udev/rules.d/99-battery-threshold.rules"
+if [[ -f "$LEGACY_UDEV" ]] && grep -q "charge_behaviour" "$LEGACY_UDEV"; then
+    echo "🗑️  Removing legacy helper rule at $LEGACY_UDEV..."
+    sudo rm -f "$LEGACY_UDEV"
+fi
+
 sudo udevadm control --reload-rules
 echo "✅ Udev rules removed"
 

@@ -1,0 +1,10 @@
+# Allow write access to charge_behaviour for the battery-auto-discharge helper.
+#
+# NOTE: This file is intentionally named differently from the Noctalia
+# battery-threshold plugin's udev rule (99-battery-threshold.rules) so the two
+# can coexist. The plugin's rule grants group-write access to
+# charge_control_end_threshold via the `battery_ctl` group; it does NOT touch
+# charge_behaviour, which this helper needs in order to write
+# `force-discharge` / `auto`. This rule covers only that gap.
+SUBSYSTEM=="power_supply", KERNEL=="BAT*", \
+    RUN+="/bin/chmod 666 /sys$devpath/charge_behaviour"

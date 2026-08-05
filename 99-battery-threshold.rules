@@ -1,6 +1,0 @@
-# Allow write access to battery charge threshold controls
-KERNEL=="BAT1", SUBSYSTEM=="power_supply", RUN+="/bin/chmod 666 /sys/class/power_supply/BAT1/charge_control_end_threshold"
-KERNEL=="BAT1", SUBSYSTEM=="power_supply", RUN+="/bin/chmod 666 /sys/class/power_supply/BAT1/charge_control_start_threshold"
-KERNEL=="BAT1", SUBSYSTEM=="power_supply", RUN+="/bin/chmod 666 /sys/class/power_supply/BAT1/charge_stop_threshold"
-KERNEL=="BAT1", SUBSYSTEM=="power_supply", RUN+="/bin/chmod 666 /sys/class/power_supply/BAT1/charge_start_threshold"
-KERNEL=="BAT1", SUBSYSTEM=="power_supply", RUN+="/bin/chmod 666 /sys/class/power_supply/BAT1/charge_behaviour"
